@@ -1,30 +1,100 @@
 # AI Box Gateway
 
-通过微信与 Linux AI 助手协作：发任务、追问进度、中途叫停或改方向，并按话题保留上下文。
+### One chat. The right context. A Manager that keeps track.
 
-本仓库是运行中 AI Box 网关的脱敏源码快照，包含模块化 v2 网关、v1 参考实现、配套脚本和模拟回放测试。真实账号、会话、机器配置和旧 Git 历史均未包含。
+[![Tests](https://github.com/YunongDai2005/aibox-gateway/actions/workflows/test.yml/badge.svg)](https://github.com/YunongDai2005/aibox-gateway/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
-## 能做什么
+**AI Box is an experimental AI conversation orchestration system built around one idea: you should be able to talk naturally in a single chat while a Manager finds the right existing session or starts a new one.**
 
-- **微信消息路由**：插在 OpenClaw 微信插件与腾讯 iLink 之间，代理消息并按模式分流。
-- **任务执行**：调用 DSH 命令行，处理文本、语音转写、图片和文件；支持排队、叫停和中途补充。
-- **经理对话**：任务执行期间回应进度和纠正要求，通过信箱把补充信息交给执行器。
-- **话题与记忆**：自动识别话题、拆分会话、生成交接包、检索历史目录。
-- **可选外援**：配套脚本调用其他模型/CLI，在独立工作副本中处理任务。
-- **可选复盘**：记录信号、调整限定参数、生成改进提案；代码提案有批准和上线两个步骤。
-- **可观察性**：本地状态 API、运行日志、结构化事件与恢复脚本。
+Keep talking, return to an earlier project, add a requirement, or stop a task. The design goal is for the system to manage conversation context and execution on your behalf.
+
+The current implementation connects WeChat, OpenClaw, and a DSH command-line worker on Linux. It includes automatic topic routing, a Manager for conversations during execution, session handoffs, and a plugin-based execution pipeline.
+
+[Design goal](#design-goal) · [Current capabilities](#what-works-today) · [Quick start](#try-the-replay-tests) · [Roadmap](#roadmap) · [Contributing](#contributing)
+
+## Design goal
+
+> **Users should not have to manage sessions. The system should keep their tasks separate, preserve context, and follow through.**
+
+A single conversation can contain several ongoing projects. The Manager should understand which one each message belongs to, retrieve its context, and decide what happens next.
+
+### The experience we are building toward
+
+*Illustrative interaction, not a recorded demo:*
 
 ```text
-微信 ↔ 腾讯 iLink ↔ AI Box Gateway ↔ OpenClaw 微信插件
-                         │
-                         ├─ 命令 / 经理 / 话题路由
-                         ├─ DSH 执行器 → 模型与本机工具
-                         └─ 会话交接 / 信箱 / 状态 API
+You:      Help me prepare the website launch.
+Manager:  I'll start a session for the launch.
+
+You:      Back to the Python tool we discussed yesterday: add CSV export.
+Manager:  I'll pick up that tool's session with its existing context.
+
+You:      Also include column headers.
+Manager:  I'll attach that requirement to the CSV export task.
+
+You:      How is the website going?
+Manager:  [Reports the website task's actual state.]
 ```
 
-## 先运行测试
+The user stays in one chat. Behind it, the system keeps track of:
 
-需要 Node.js 22+，测试使用内置模块，无需 npm install，也不需要真实微信账号或模型密钥。
+- **Conversation identity:** continue an existing topic or create a new one.
+- **Message intent:** a follow-up, correction, stop request, status question, or separate task.
+- **Execution state:** what is running, waiting, completed, or blocked.
+- **Context continuity:** which session, handoff, and prior decisions a worker needs.
+
+This is the direction of the project. A unified Manager for every message, durable task scheduling, and independent concurrent topic execution are still roadmap work.
+
+## What works today
+
+| Capability | Current implementation |
+| --- | --- |
+| Automatic session routing | Topic matching uses lexical/entity candidates and model judgment to stay in a session, resume another topic, or create one. |
+| Conversation during execution | While the worker is busy, the Manager can answer status questions, relay notes, queue another request, or request interruption. |
+| Interruptions and corrections | Stop and steering handlers coordinate interruption and follow-up execution. |
+| Context handoffs | Session metadata, handoff documents, and recall hooks help carry context into another session. |
+| Media handling | The WeChat adapter handles text, voice transcripts, images, and file delivery. |
+| Optional helper workers | Scripts can invoke additional model/CLI helpers, including worktree-based code tasks. |
+| Optional review and improvement | Signals, bounded parameter tuning, and proposed code changes with approval and deployment steps. |
+| Replay testing | Fake messaging, worker, and model services exercise the gateway without real accounts. |
+
+### Current boundaries
+
+- **The Manager is not yet the universal entry point.** It primarily handles messages while the worker is busy; ordinary topic routing is a separate stage in the execution pipeline.
+- **Execution is serial per chat.** Multiple topic sessions exist, but independent topics in one chat do not yet execute concurrently through the main queue.
+- **The queue is in memory.** Restart-safe task recovery and delivery acknowledgments are not implemented.
+- **Mailbox notes are not bound to a specific task or topic.** Stronger message-to-task association is a priority before broader concurrent or multi-user use.
+- **This is a source release for integration.** Real deployment requires your own DSH configuration, OpenClaw WeChat plugin, accounts, and model access.
+
+## Architecture
+
+The current transport path:
+
+```text
+WeChat <--> Tencent iLink <--> AI Box Gateway <--> OpenClaw WeChat plugin
+                                     |
+                         Commands and ingress handlers
+                                     |
+                      +--------------+--------------+
+                      |                             |
+              Manager when busy              Per-chat queue
+                      |                             |
+            Reply / note / redirect           Topic routing
+                      |                             |
+                      +----------------------> Session context
+                                                    |
+                                                DSH worker
+                                                    |
+                                         Reply and state updates
+```
+
+The main architectural goal is to move conversation selection and scheduling behind a consistent Manager interface. WeChat provides the current entry point; the core product idea is **conversation and session orchestration**.
+
+## Try the replay tests
+
+Requires **Node.js 22+**. The tests use built-in Node modules: no `npm install`, WeChat account, or model credentials are required.
 
 ```bash
 git clone https://github.com/YunongDai2005/aibox-gateway.git
@@ -32,47 +102,91 @@ cd aibox-gateway
 npm test
 ```
 
-模拟服务仅监听本机，临时目录隔离消息、账号和模型数据。`npm run test:both` 额外运行 v1 对照；v1 是保留的部署参考，其跨平台兼容性见 [验证记录](docs/VALIDATION.md)。
+The published v2 snapshot passed **42 test entries**, including unit-test groups and replay scenarios, locally and in Linux CI. The badge above shows the latest CI status.
 
-## 接入真实环境
+Fake services bind to loopback addresses and use isolated temporary directories. Tests cover routing, sessions, media, interruptions, Manager interactions, handoffs, and review workflows. They do not establish real-provider compatibility or production routing accuracy.
 
-这是需要自行配置的集成项目。实际运行依赖 Linux、已配置的 DSH `headless` profile、OpenClaw 及其微信插件、用户自己的 iLink 账号和模型凭证。
-
-完整配套脚本沿用固定布局，以专用 Linux 用户 `aibox` 为示例：
-
-```text
-/home/aibox/wx-router/      本仓库
-/home/aibox/bin/            从本仓库 bin/ 安装的脚本
-/home/aibox/dsh-work/       DSH 工作目录
-/home/aibox/.dsh/           用户自己的 DSH profile 与凭证
-/home/aibox/.openclaw/      用户自己的 OpenClaw 和微信插件
-/home/aibox/.aibox/         运行中生成的本地状态
+```bash
+# Optional comparison with the legacy v1 implementation
+npm run test:both
 ```
 
-1. 将仓库放在上面的 `wx-router` 目录。确认 `~/bin` 中没有同名脚本后，将仓库 `bin/` 的内容复制过去，并创建 `~/dsh-work`。
-2. 复制 `config.example.json` 为 `config.json`，按实际安装填写 `accountFile`、`pluginDir`、`dshBin`、`dshCwd`、模型设置和 `realBase`。
-3. **`realBase` 必须是原始 iLink 上游地址**。让 OpenClaw 微信通道通过 `http://127.0.0.1:8787` 接入代理时，不要把这个回环地址当成上游，否则会形成循环代理。
-4. DSH 的 `headless` profile 及 `fallback-deepseek.yml` 需用户自行配置；经理等组件从 `~/.dsh/.credentials.yaml` 读取 `OPENCODE_GO_API_KEY`、`DEEPSEEK_API_KEY`。模型名与供应商地址按自己的服务调整。
-5. 先前台执行 `npm start`，检查 `/healthz` 和 `http://127.0.0.1:8788/api/v2/status`。确认集成正确后再安装 `ops/wx-router.service`，修改其中 Node 的实际路径。
+The legacy comparison has known failures documented in the [validation record](docs/VALIDATION.md) (Chinese). v2 is the primary implementation.
 
-v2 核心支持 `AIBOX_HOME`、`AIBOX_ROOT`、`AIBOX_CONFIG`；v1 和部分 `bin/`/`ops/` 脚本仍使用 `/home/aibox`。若换用户或目录，需要同步调整这些脚本。微信插件内部模块布局可能随版本变化，接入时需核对。
+## Deploy with your own integrations
 
-示例配置关闭外援、本地模型及自动复盘；启用前先配置相应 CLI、模型和脚本。系统状态面板、MCP 控制服务、模型权重和第三方框架不包含在本仓库中。
+### Prerequisites
 
-## 目录与开发
+- Linux; systemd user services for the supplied service and helper workflows.
+- Node.js 22+ and a configured DSH CLI with a `headless` profile.
+- OpenClaw with its WeChat plugin and your own iLink account.
+- Your own model credentials and provider configuration.
+- Python 3 and `zstdcat` for the optional session-history tools.
 
-| 目录 | 内容 |
+The complete supporting scripts use this example layout:
+
+```text
+/home/aibox/wx-router/      Repository checkout
+/home/aibox/bin/            Scripts installed from this repository's bin/
+/home/aibox/dsh-work/       Worker workspace
+/home/aibox/.dsh/           Your DSH profiles and credentials
+/home/aibox/.openclaw/      Your OpenClaw installation and WeChat plugin
+/home/aibox/.aibox/         Generated local state
+```
+
+1. Place the repository at `/home/aibox/wx-router`. Inspect `~/bin` for name conflicts before copying the supplied `bin/` scripts there, and create `~/dsh-work`.
+2. Copy `config.example.json` to `config.json`. Set `accountFile`, `pluginDir`, `dshBin`, `dshCwd`, provider/model settings, and `realBase` for your installation.
+3. **Set `realBase` to the original iLink upstream.** Configure the OpenClaw WeChat channel to use the local proxy at `http://127.0.0.1:8787`. Using that proxy address as the upstream would create a loop.
+4. Configure the DSH `headless` profile and its fallback patch yourself. Manager model calls read `OPENCODE_GO_API_KEY` and `DEEPSEEK_API_KEY` from `~/.dsh/.credentials.yaml`. Adjust provider endpoints and model names to your available services.
+5. Run `npm start` in the foreground. Check `/healthz` and `http://127.0.0.1:8788/api/v2/status`, then verify the real messaging path. Only then install `ops/wx-router.service`, adjusting its Node executable path.
+
+The v2 core supports `AIBOX_HOME`, `AIBOX_ROOT`, and `AIBOX_CONFIG`. Legacy v1 and some `bin/` and `ops/` scripts still assume `/home/aibox`; a different layout requires corresponding edits. The WeChat adapter imports plugin internals, so verify the module layout against your installation.
+
+The example configuration disables helper workers, local-model routing, and automated review. Configure their dependencies before enabling them. The system dashboard, MCP control services, third-party frameworks, and model weights are not bundled.
+
+### Privacy and access
+
+The proxy and status API default to loopback. The status API does not provide a complete public-facing authentication layer. Keep it private, and choose worker permissions appropriate to your machine.
+
+The published repository excludes account files, credentials, private conversations, personal knowledge, runtime state, and the original Git history. Runtime logs and handoffs can still contain private content: inspect them before sharing. See [security notes](SECURITY.md) (Chinese).
+
+## Roadmap
+
+The priorities follow the single-chat experience:
+
+- [ ] **Unified Manager ingress:** route every message through a consistent decision interface, with fast paths for unambiguous requests.
+- [ ] **Explicit task binding:** associate notes, corrections, questions, and results with a conversation, topic, and task ID.
+- [ ] **Durable scheduling:** persist accepted tasks and delivery state; recover safely after restarts and avoid duplicate execution.
+- [ ] **Ambiguity handling:** use task state and recent references to resolve follow-ups; ask a short clarification when a consequential choice remains unclear.
+- [ ] **Independent topic execution:** allow bounded concurrency across unrelated sessions while serializing work that shares context or resources.
+- [ ] **Routing evaluation:** add labeled replay cases for topic switches, next-day continuations, interruptions, corrections, and ambiguous references.
+
+## Repository map
+
+| Path | Responsibility |
 | --- | --- |
-| `src/core` | 配置、插件注册、日志和模型调用 |
-| `src/channel` | 微信代理、消息与媒体 |
-| `src/agent` | 执行流水线、队列和中断 |
-| `src/plugins` | 经理、话题、叫停、交接等功能 |
-| `src/memory` / `src/evolve` | 话题记忆与复盘提案 |
-| `bin` / `ops` | 可选配套工具与 Linux 运维示例 |
-| `test` | 假服务、场景回放和单元测试 |
+| `src/manager/` | Manager decisions and worker communication |
+| `src/memory/` | Topic routing, matching, and topic splitting |
+| `src/agent/` | Execution pipeline, queues, sessions, and interruption |
+| `src/plugins/` | Manager, topics, progress, stop, handoff, and other features |
+| `src/core/` | Configuration, plugin registration, logging, and model clients |
+| `src/channel/` | WeChat transport and media handling |
+| `src/evolve/` | Review signals, bounded tuning, and improvement proposals |
+| `bin/` and `ops/` | Optional helper tools and Linux operations examples |
+| `test/` | Fake services, replay scenarios, and unit tests |
 
-开发前阅读 [架构](docs/ARCHITECTURE.md)；新增功能优先写插件并补充回放用例。另见 [复盘机制](docs/EVOLVE.md)、[项目盘点](docs/PROJECT-OVERVIEW.md)、[脱敏范围](docs/PUBLICATION.md) 和 [安全说明](SECURITY.md)。
+Detailed documents currently remain in Chinese: [architecture](docs/ARCHITECTURE.md), [review workflow](docs/EVOLVE.md), [project inventory](docs/PROJECT-OVERVIEW.md), and [publication scope](docs/PUBLICATION.md).
+
+## Contributing
+
+Contributions around **conversation routing, session memory, interruption handling, and reliable scheduling** are especially useful.
+
+- For routing issues, provide a short **synthetic or redacted conversation**, the expected target topic, and what happened instead.
+- For code changes, read the architecture document, prefer a plugin when appropriate, add a replay case for the behavior, and run `npm test`.
+- English translations of the detailed docs and reproducible integration guides are welcome.
+
+If this is a system you want to use or help build, **star the repository** and share the conversation patterns you need it to handle in [Issues](https://github.com/YunongDai2005/aibox-gateway/issues).
 
 ## License
 
-本仓库代码采用 [MIT License](LICENSE)。OpenClaw、微信插件、DSH、AstrBot、llama.cpp 及模型服务是独立依赖，遵循各自许可和使用条件；本仓库不重新分发它们的代码、权重或凭证。
+[MIT](LICENSE). External frameworks, plugins, CLIs, and model services retain their own licenses and terms. Their code, model weights, and credentials are not redistributed here.

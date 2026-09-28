@@ -2,7 +2,7 @@
   "name": "aibox-gateway",
   "version": "2.0.0",
   "private": true,
-  "description": "AI Box 微信网关：DSH 工人 + 经理 + 多话题记忆 + 自进化",
+  "description": "AI conversation orchestration for a single chat: automatic topic routing, session continuity, and Manager-assisted task coordination.",
   "type": "module",
   "main": "boot.mjs",
   "engines": {
@@ -17,5 +17,17 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/YunongDai2005/aibox-gateway.git"
-  }
+  },
+  "keywords": [
+    "ai-agent",
+    "agent-orchestration",
+    "conversation-routing",
+    "session-management",
+    "task-scheduling",
+    "context-management",
+    "human-in-the-loop",
+    "wechat",
+    "openclaw",
+    "self-hosted"
+  ]
 }
