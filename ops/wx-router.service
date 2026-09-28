@@ -1,0 +1,12 @@
+[Unit]
+Description=wx-router (iLink transparent proxy for dual-model WeChat)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /home/aibox/wx-router/boot.mjs
+Restart=always
+RestartSec=3
+WorkingDirectory=/home/aibox/wx-router
+
+[Install]
+WantedBy=default.target

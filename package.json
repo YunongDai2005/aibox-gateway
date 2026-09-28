@@ -1,0 +1,21 @@
+{
+  "name": "aibox-gateway",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AI Box 微信网关：DSH 工人 + 经理 + 多话题记忆 + 自进化",
+  "type": "module",
+  "main": "boot.mjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node boot.mjs",
+    "test": "node test/run.mjs",
+    "test:both": "node test/run.mjs --engine both"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YunongDai2005/aibox-gateway.git"
+  }
+}

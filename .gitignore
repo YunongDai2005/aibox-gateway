@@ -1,0 +1,36 @@
+# 运行状态、日志、备份 —— 不入库
+*.bak*
+*.log
+dsh-live.json*
+modes.json
+dsh-sessions.json
+dsh-session-meta.json
+dsh-threads.json
+go-state.json
+route-state.json
+*.tmp
+node_modules/
+account.json*
+tunables.json
+cache/
+config.json.before-restart
+
+# Deployment configuration and private runtime data
+config.json*
+!config.example.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jsonl
+*.sqlite*
+*.db
+.aibox/
+.dsh/
+.openclaw/
+.codex/
+.claude/
+.ssh/
+__pycache__/
+.DS_Store

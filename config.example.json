@@ -1,0 +1,30 @@
+{
+  "engine": "v2",
+  "listenHost": "127.0.0.1",
+  "listenPort": 8787,
+  "apiHost": "127.0.0.1",
+  "apiPort": 8788,
+  "accountFile": "/home/aibox/.openclaw/openclaw-weixin/accounts/account.json",
+  "pluginDir": "/home/aibox/.openclaw/npm/projects/weixin-plugin/node_modules/@tencent-weixin/openclaw-weixin/dist/src",
+  "realBase": "https://YOUR-ILINK-UPSTREAM.example.invalid",
+  "dshBin": "/usr/local/bin/dsh",
+  "dshCwd": "/home/aibox/dsh-work",
+  "dashboardUrl": "http://127.0.0.1/",
+  "features": {
+    "progress": true,
+    "manager": true,
+    "topics": true,
+    "stop": true,
+    "steer": true,
+    "handoff": true,
+    "recall": true,
+    "helpers": false,
+    "local": false,
+    "observe": true,
+    "evolve": false
+  },
+  "evolve": {
+    "autoTune": false,
+    "proposals": false
+  }
+}
