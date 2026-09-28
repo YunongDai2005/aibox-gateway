@@ -15,6 +15,9 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// Keep the test runner and gateway children on the same calendar day.
+process.env.TZ ||= 'UTC';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const APP_DIR = path.resolve(HERE, '..');
 const V1_SRC = process.env.V1_SRC || APP_DIR;   // 老代码（proxy.mjs 等）就在仓库根目录，原样保留用于回滚
@@ -184,7 +187,7 @@ export async function startEnv({ engine = 'v2', config = {}, setup, llmRules } =
   if (setup) await setup(env);
   env.proc = spawn(process.execPath, [entry], {
     cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, AIBOX_HOME: home, AIBOX_ROOT: root, AIBOX_CONFIG: path.join(root, 'config.json'), FAKE_SENT: files.sent, FAKE_DSH_LOG: files.dsh, FAKE_LOST: files.lost, HELPER_NO_NOTIFY: '1', HANDOFF_DIR: path.join(home, 'dsh-work/handoffs'), TZ: process.env.TZ || 'Asia/Shanghai' },
+    env: { ...process.env, AIBOX_HOME: home, AIBOX_ROOT: root, AIBOX_CONFIG: path.join(root, 'config.json'), FAKE_SENT: files.sent, FAKE_DSH_LOG: files.dsh, FAKE_LOST: files.lost, HELPER_NO_NOTIFY: '1', HANDOFF_DIR: path.join(home, 'dsh-work/handoffs'), TZ: process.env.TZ },
   });
   env.proc.stderr.on('data', (d) => { env.stderr += d; });
   env.proc.stdout.on('data', (d) => { env.stderr += d; });
