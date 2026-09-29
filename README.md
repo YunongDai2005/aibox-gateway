@@ -14,6 +14,23 @@ The current implementation connects WeChat, OpenClaw, and a DSH command-line wor
 
 [Design goal](#design-goal) · [Current capabilities](#what-works-today) · [Quick start](#try-the-replay-tests) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
+## Watch the replay
+
+[![One chat, three sessions, and quota-aware advisor selection](docs/demo/preview.gif)](https://YunongDai2005.github.io/aibox-gateway/demo/)
+
+**[Open the interactive demo →](https://YunongDai2005.github.io/aibox-gateway/demo/)**
+
+Seven messages move between a website, battery research, and a Python tool without session selectors or switch commands. The recorder verifies that returning to each topic restores its original worker session ID. A separate advisor scene shows quota filtering and a simulated Manager choice for a coding task.
+
+**This is a reproducible replay, not a live product recording:** gateway/session code and advisor selection functions are real; messages, model decisions, quota balances, and the worker are test fixtures. It demonstrates routing mechanics, not real-model accuracy or concurrent task execution. The visual captions describe verified state rather than actual worker replies.
+
+```bash
+npm run demo:record
+# Open docs/demo/index.html in your browser
+```
+
+See the [recorder and evidence](demo/README.md). The viewer is self-contained and can be opened locally.
+
 ## Design goal
 
 > **Users should not have to manage sessions. The system should keep their tasks separate, preserve context, and follow through.**
@@ -56,6 +73,7 @@ This is the direction of the project. A unified Manager for every message, durab
 | Interruptions and corrections | Stop and steering handlers coordinate interruption and follow-up execution. |
 | Context handoffs | Session metadata, handoff documents, and recall hooks help carry context into another session. |
 | Media handling | The WeChat adapter handles text, voice transcripts, images, and file delivery. |
+| Quota-aware advisor scheduling | Helper auto-selection filters unavailable or nearly exhausted providers, then asks a Manager model to choose using task difficulty, remaining quota, reset windows, and usage preferences. A rule-based fallback handles unavailable Manager responses. |
 | Optional helper workers | Scripts can invoke additional model/CLI helpers, including worktree-based code tasks. |
 | Optional review and improvement | Signals, bounded parameter tuning, and proposed code changes with approval and deployment steps. |
 | Replay testing | Fake messaging, worker, and model services exercise the gateway without real accounts. |

@@ -11,7 +11,8 @@
   "scripts": {
     "start": "node boot.mjs",
     "test": "node test/run.mjs",
-    "test:both": "node test/run.mjs --engine both"
+    "test:both": "node test/run.mjs --engine both",
+    "demo:record": "node demo/record.mjs && node demo/build.mjs"
   },
   "license": "MIT",
   "repository": {

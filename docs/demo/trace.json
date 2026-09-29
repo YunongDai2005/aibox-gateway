@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "provenance": {
+    "gateway": "Real v2 routing and session code",
+    "model": "Deterministic fixture responses",
+    "worker": "Fake DSH, no actual project edits",
+    "advisor": "Real quota filter and selection functions; simulated Manager choice",
+    "execution": "Sequential per chat; no concurrent-task or task-bound-mailbox claim"
+  },
+  "frames": [
+    {
+      "text": "Build a landing page for my website.",
+      "topic": "Website",
+      "note": "A website conversation starts.",
+      "action": "stay",
+      "session": "S1",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": true
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Compare battery storage options for my research.",
+      "topic": "Research",
+      "note": "A different subject gets its own session.",
+      "action": "new",
+      "session": "S2",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": false
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": true
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Add CSV export to my Python tool.",
+      "topic": "Python tool",
+      "note": "A third topic gets a separate session.",
+      "action": "new",
+      "session": "S3",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": false
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": false
+        },
+        {
+          "title": "Python tool",
+          "session": "S3",
+          "active": true
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Make the homepage hero dark.",
+      "topic": "Website",
+      "note": "The website session is restored without a switch command.",
+      "action": "switch",
+      "session": "S1",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": true
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": false
+        },
+        {
+          "title": "Python tool",
+          "session": "S3",
+          "active": false
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Show the battery comparison as a bar chart.",
+      "topic": "Research",
+      "note": "The research session is restored.",
+      "action": "switch",
+      "session": "S2",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": false
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": true
+        },
+        {
+          "title": "Python tool",
+          "session": "S3",
+          "active": false
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Include column headers in the CSV.",
+      "topic": "Python tool",
+      "note": "The export requirement reaches the original Python session.",
+      "action": "switch",
+      "session": "S3",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": false
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": false
+        },
+        {
+          "title": "Python tool",
+          "session": "S3",
+          "active": true
+        }
+      ],
+      "verified": true
+    },
+    {
+      "text": "Also handle empty files.",
+      "topic": "Python tool",
+      "note": "A follow-up stays in the active topic.",
+      "action": "stay",
+      "session": "S3",
+      "topics": [
+        {
+          "title": "Website",
+          "session": "S1",
+          "active": false
+        },
+        {
+          "title": "Research",
+          "session": "S2",
+          "active": false
+        },
+        {
+          "title": "Python tool",
+          "session": "S3",
+          "active": true
+        }
+      ],
+      "verified": true
+    }
+  ],
+  "advisor": {
+    "task": "Review the Python CSV implementation",
+    "quotas": [
+      {
+        "name": "Claude",
+        "left": 6,
+        "status": "Excluded: below 10%"
+      },
+      {
+        "name": "GPT",
+        "left": 72,
+        "status": "Selected by fixture Manager"
+      },
+      {
+        "name": "Go",
+        "left": 55,
+        "status": "Eligible alternative"
+      }
+    ],
+    "selected": "GPT",
+    "reason": "Coding task; 72% remaining. Manager choice is simulated.",
+    "verified": true
+  },
+  "checks": [
+    "Three distinct sessions created",
+    "All three follow-ups reuse the original worker session ID",
+    "The final follow-up stays in the Python session",
+    "Advisor below 10% is excluded before Manager selection",
+    "Manager receives quota data and task requirements"
+  ]
+}

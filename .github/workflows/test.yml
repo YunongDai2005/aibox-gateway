@@ -11,3 +11,5 @@ jobs:
         with:
           node-version: 24
       - run: npm test
+      - run: npm run demo:record
+      - run: git diff --exit-code -- docs/demo/trace.json docs/demo/index.html
