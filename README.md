@@ -1,12 +1,14 @@
-# AI Box Gateway
+# The One
 
-### One chat. The right context. A Manager that keeps track.
+### One conversation. Your agents, coordinated.
 
-[![Tests](https://github.com/YunongDai2005/aibox-gateway/actions/workflows/test.yml/badge.svg)](https://github.com/YunongDai2005/aibox-gateway/actions/workflows/test.yml)
+[![Tests](https://github.com/YunongDai2005/theone-agent/actions/workflows/test.yml/badge.svg)](https://github.com/YunongDai2005/theone-agent/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-green.svg)](package.json)
 
-**AI Box is an experimental AI conversation orchestration system built around one idea: you should be able to talk naturally in a single chat while a Manager finds the right existing session or starts a new one.**
+**The One is an experimental personal AI system that manages conversations, preserves context, and coordinates agents based on task needs and available quotas.**
+
+Previously published as AI Box Gateway. The goal is simple: talk in one place while the system finds the right context and coordinates the work.
 
 Keep talking, return to an earlier project, add a requirement, or stop a task. The design goal is for the system to manage conversation context and execution on your behalf.
 
@@ -16,9 +18,9 @@ The current implementation connects WeChat, OpenClaw, and a DSH command-line wor
 
 ## Watch the replay
 
-[![One chat, three sessions, and quota-aware advisor selection](docs/demo/preview.gif)](https://YunongDai2005.github.io/aibox-gateway/demo/)
+[![One chat, three sessions, and quota-aware advisor selection](docs/demo/preview.gif)](https://YunongDai2005.github.io/theone-agent/demo/)
 
-**[Open the interactive demo →](https://YunongDai2005.github.io/aibox-gateway/demo/)**
+**[Open the interactive demo →](https://YunongDai2005.github.io/theone-agent/demo/)**
 
 Seven messages move between a website, battery research, and a Python tool without session selectors or switch commands. The recorder verifies that returning to each topic restores its original worker session ID. A separate advisor scene shows quota filtering and a simulated Manager choice for a coding task.
 
@@ -35,7 +37,7 @@ See the [recorder and evidence](demo/README.md). The viewer is self-contained an
 
 > **Users should not have to manage sessions. The system should keep their tasks separate, preserve context, and follow through.**
 
-A single conversation can contain several ongoing projects. The Manager should understand which one each message belongs to, retrieve its context, and decide what happens next.
+A single conversation can contain several ongoing projects. A dedicated Session Administrator should find the right existing context or create a new session. The Manager should coordinate tasks and advisors within that context.
 
 ### The experience we are building toward
 
@@ -43,10 +45,10 @@ A single conversation can contain several ongoing projects. The Manager should u
 
 ```text
 You:      Help me prepare the website launch.
-Manager:  I'll start a session for the launch.
+Manager:  I'll help prepare the launch.
 
 You:      Back to the Python tool we discussed yesterday: add CSV export.
-Manager:  I'll pick up that tool's session with its existing context.
+Manager:  I'll add CSV export to the Python tool.
 
 You:      Also include column headers.
 Manager:  I'll attach that requirement to the CSV export task.
@@ -62,7 +64,7 @@ The user stays in one chat. Behind it, the system keeps track of:
 - **Execution state:** what is running, waiting, completed, or blocked.
 - **Context continuity:** which session, handoff, and prior decisions a worker needs.
 
-This is the direction of the project. A unified Manager for every message, durable task scheduling, and independent concurrent topic execution are still roadmap work.
+This is the direction of the project. The dedicated Session Administrator, hierarchical advisor archives, durable scheduling, and independent concurrent topic execution are roadmap work.
 
 ## What works today
 
@@ -91,7 +93,7 @@ This is the direction of the project. A unified Manager for every message, durab
 The current transport path:
 
 ```text
-WeChat <--> Tencent iLink <--> AI Box Gateway <--> OpenClaw WeChat plugin
+WeChat <--> Tencent iLink <--> The One gateway <--> OpenClaw WeChat plugin
                                      |
                          Commands and ingress handlers
                                      |
@@ -108,15 +110,38 @@ WeChat <--> Tencent iLink <--> AI Box Gateway <--> OpenClaw WeChat plugin
                                          Reply and state updates
 ```
 
-The main architectural goal is to move conversation selection and scheduling behind a consistent Manager interface. WeChat provides the current entry point; the core product idea is **conversation and session orchestration**.
+WeChat provides the current entry point. The core product idea is **conversation and session orchestration**; the planned separation of responsibilities is described below.
+
+## Planned roles and memory hierarchy
+
+**Design proposal; this complete flow is not implemented yet.** The existing topic router and model judge are the starting point for the Session Administrator.
+
+| Role | Responsibility |
+| --- | --- |
+| Session Administrator | Find the relevant conversation, resolve references and pending answers, and propose session reuse or creation. Index advisor findings under their parent tasks. |
+| Manager | Interpret the requested action within the assigned context, coordinate execution, and choose advisors using task needs, quotas, reset windows, and user preferences. |
+| Workers and advisors | Execute scoped tasks and return findings, artifacts, and verification evidence. |
+| Runtime | Validate IDs and permissions, persist state, enforce resource constraints, and apply session or execution changes. |
+
+```text
+User topic
+  └─ Task
+      ├─ Main worker session and handoffs
+      ├─ Advisor job → session, findings, artifacts, verification
+      └─ Advisor job → session, findings, artifacts, verification
+```
+
+Advisor jobs should receive their topic and task IDs when created. Their archive destination is determined by those IDs; AI helps summarize and retrieve the records. An advisor suggestion, a verified result, and a merged change remain distinct states. Provider changes use handoff summaries when sessions cannot be resumed across tools.
+
+Switching the foreground conversation must not implicitly stop a running task. Consequential ambiguity should trigger a short clarification. Runtime validation and durable task records must support these decisions before broader autonomous scheduling.
 
 ## Try the replay tests
 
 Requires **Node.js 22+**. The tests use built-in Node modules: no `npm install`, WeChat account, or model credentials are required.
 
 ```bash
-git clone https://github.com/YunongDai2005/aibox-gateway.git
-cd aibox-gateway
+git clone https://github.com/YunongDai2005/theone-agent.git
+cd theone-agent
 npm test
 ```
 
@@ -172,7 +197,9 @@ The published repository excludes account files, credentials, private conversati
 
 The priorities follow the single-chat experience:
 
-- [ ] **Unified Manager ingress:** route every message through a consistent decision interface, with fast paths for unambiguous requests.
+- [ ] **Dedicated Session Administrator:** resolve current, previous, or new sessions using topic summaries, task state, and pending questions; retain direct handling for explicit stop requests.
+- [ ] **Manager coordination:** consume validated session assignments and coordinate tasks and advisors without repeating the routing decision.
+- [ ] **Advisor continuity and archives:** bind advisor sessions, findings, artifacts, and verification status to their parent tasks; resume compatible sessions or provide a handoff summary.
 - [ ] **Explicit task binding:** associate notes, corrections, questions, and results with a conversation, topic, and task ID.
 - [ ] **Durable scheduling:** persist accepted tasks and delivery state; recover safely after restarts and avoid duplicate execution.
 - [ ] **Ambiguity handling:** use task state and recent references to resolve follow-ups; ask a short clarification when a consequential choice remains unclear.
@@ -203,7 +230,7 @@ Contributions around **conversation routing, session memory, interruption handli
 - For code changes, read the architecture document, prefer a plugin when appropriate, add a replay case for the behavior, and run `npm test`.
 - English translations of the detailed docs and reproducible integration guides are welcome.
 
-If this is a system you want to use or help build, **star the repository** and share the conversation patterns you need it to handle in [Issues](https://github.com/YunongDai2005/aibox-gateway/issues).
+If this is a system you want to use or help build, **star the repository** and share the conversation patterns you need it to handle in [Issues](https://github.com/YunongDai2005/theone-agent/issues).
 
 ## License
 

@@ -1,8 +1,8 @@
 {
-  "name": "aibox-gateway",
+  "name": "theone-agent",
   "version": "2.0.0",
   "private": true,
-  "description": "AI conversation orchestration for a single chat: automatic topic routing, session continuity, and Manager-assisted task coordination.",
+  "description": "The One: one conversation for context continuity, task coordination, and quota-aware AI advisors.",
   "type": "module",
   "main": "boot.mjs",
   "engines": {
@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YunongDai2005/aibox-gateway.git"
+    "url": "https://github.com/YunongDai2005/theone-agent.git"
   },
   "keywords": [
     "ai-agent",
@@ -29,6 +29,9 @@
     "human-in-the-loop",
     "wechat",
     "openclaw",
-    "self-hosted"
+    "self-hosted",
+    "multi-agent",
+    "quota-aware",
+    "agent-memory"
   ]
 }
