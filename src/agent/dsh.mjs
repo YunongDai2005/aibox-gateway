@@ -48,21 +48,21 @@ export function runDsh(task, sid, opts = {}) {
     args.push('--json');
     if (sid) args.push('--session-id', sid);
     args.push('-');
+    const runId = opts.runId || crypto.randomUUID();
     const child = spawn(cfg.dshBin, args, {
       cwd: cfg.dshCwd,
-      env: { ...process.env, DSH_PERMISSION_MODE: 'danger-full-access', OPENCODE_SESSION: opts.ocSession || 'ses_aibox_default' },
+      env: { ...process.env, DSH_PERMISSION_MODE: 'danger-full-access', OPENCODE_SESSION: opts.ocSession || 'ses_aibox_default', AIBOX_CHAT: opts.chat || '', AIBOX_RUN_ID: runId },
       stdio: ['pipe', 'pipe', 'pipe'], detached: true,
     });
     let buf = '', errTail = '', sessionId = sid || null, final = null, usage = 0, usagePeak = 0, errEvents = '';
     const t0 = Date.now(), maxMs = opts.timeoutMs || cfg.dshTimeoutMs, idleMs = opts.idleMs || cfg.dshIdleMs;
     let lastOut = t0, killedBy = null;
-    const runId = opts.runId || crypto.randomUUID();
     const generation = opts.generation;
     let settled = false, closed = false, closeCode = null, closeSignal = null, registration = null, timer = null;
     let resolveClosed; const closedPromise = new Promise((r) => { resolveClosed = r; });
 
     const control = {
-      runId, generation, pid: child.pid, state: 'running', startedAt: t0,
+      task, get hasClosed() { return closed; }, runId, generation, pid: child.pid, state: 'running', startedAt: t0,
       async interrupt(expectedRunId = runId) {
         if (expectedRunId !== runId) return false;
         if (!registration?.isCurrent(runId)) return false;

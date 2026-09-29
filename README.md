@@ -72,7 +72,7 @@ This is the direction of the project. The dedicated Session Administrator, hiera
 | --- | --- |
 | Automatic session routing | Topic matching uses lexical/entity candidates and model judgment to stay in a session, resume another topic, or create one. |
 | Conversation during execution | While the worker is busy, the Manager can answer status questions, relay notes, queue another request, or request interruption. |
-| Interruptions and corrections | Stop and steering handlers coordinate interruption and follow-up execution. |
+| Interruptions and corrections | The Manager distinguishes conflicting or urgent changes from compatible additions. Revisions wait for confirmed worker exit, preserve prior requirements and unread additions, and reject decisions tied to an outdated run. |
 | Context handoffs | Session metadata, handoff documents, and recall hooks help carry context into another session. |
 | Media handling | The WeChat adapter handles text, voice transcripts, images, and file delivery. |
 | Quota-aware advisor scheduling | Helper auto-selection filters unavailable or nearly exhausted providers, then asks a Manager model to choose using task difficulty, remaining quota, reset windows, and usage preferences. A rule-based fallback handles unavailable Manager responses. |
@@ -85,8 +85,14 @@ This is the direction of the project. The dedicated Session Administrator, hiera
 - **The Manager is not yet the universal entry point.** It primarily handles messages while the worker is busy; ordinary topic routing is a separate stage in the execution pipeline.
 - **Execution is serial per chat.** Multiple topic sessions exist, but independent topics in one chat do not yet execute concurrently through the main queue.
 - **The queue is in memory.** Restart-safe task recovery and delivery acknowledgments are not implemented.
-- **Mailbox notes are not bound to a specific task or topic.** Stronger message-to-task association is a priority before broader concurrent or multi-user use.
+- **New Manager notes carry chat, run, and topic bindings.** Scoped workers read their own notes; deferred delivery waits for the matching foreground topic. Legacy unbound notes and global question files still need migration before broader multi-user use.
 - **This is a source release for integration.** Real deployment requires your own DSH configuration, OpenClaw WeChat plugin, accounts, and model access.
+
+## Interruption policy
+
+While the Manager is enabled, it compares new instructions with the current task and execution step. Conflicting requirements or constraints that must apply immediately trigger interruption and a revised continuation. Compatible additions go to the mailbox; agreement and status questions do not restart work. Independent requests are queued for topic routing.
+
+A replacement starts only after the target worker process has exited. Completed side effects are not rolled back. If the run changes while a decision is pending, the system asks for clarification rather than applying it to another run. Model classification is still fallible; the replay tests validate handling of simulated decisions, not real-model accuracy. The legacy steering path remains available when the Manager is disabled.
 
 ## Architecture
 
@@ -145,7 +151,7 @@ cd theone-agent
 npm test
 ```
 
-The published v2 snapshot passed **42 test entries**, including unit-test groups and replay scenarios, locally and in Linux CI. The badge above shows the latest CI status.
+The published v2 snapshot passed **50 test entries**, including unit-test groups and replay scenarios, locally and in Linux CI. The badge above shows the latest CI status.
 
 Fake services bind to loopback addresses and use isolated temporary directories. Tests cover routing, sessions, media, interruptions, Manager interactions, handoffs, and review workflows. They do not establish real-provider compatibility or production routing accuracy.
 

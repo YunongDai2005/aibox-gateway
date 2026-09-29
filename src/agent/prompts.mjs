@@ -15,3 +15,10 @@ export function wrapSteer(userText) {
 export function mailboxDelivery(body) {
   return '【你刚才干活时主人说的话（经理转达，你还没看到）】\n' + body + '\n请现在处理：需要调整刚交付的就调整，需要回答就回答。';
 }
+
+// Preserve effective requirements when a Manager correction interrupts the first turn too.
+export function managerRevision(original, userText) {
+  return wrapSteer(userText) + '\n\n【此前执行要求】\n' + original
+    + '\n\n【本次更新要求，冲突处以此为准】\n' + userText
+    + '\n保留此前未被推翻的要求。先检查已完成的操作和文件状态，中断不代表撤销；不要重复已经完成的外部操作。';
+}

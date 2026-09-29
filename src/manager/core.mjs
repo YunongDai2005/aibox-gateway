@@ -39,9 +39,9 @@ export function isOn(chat, dflt) { const s = rj(STATE, {}); return s[chat] === u
 export function setOn(chat, on) { const s = rj(STATE, {}); s[chat] = !!on; wj(STATE, s); }
 
 // ---------- 信箱：经理 → 工人 ----------
-export function mailboxAdd(text, kind = 'note') {
+export function mailboxAdd(text, kind = 'note', binding = {}) {
   fs.mkdirSync(DIR, { recursive: true });
-  const item = { id: crypto.randomUUID().slice(0, 8), at: new Date().toISOString(), kind, text, read: false };
+  const item = { id: crypto.randomUUID().slice(0, 8), at: new Date().toISOString(), kind, text, read: false, ...binding };
   fs.appendFileSync(MAILBOX, JSON.stringify(item) + '\n');
   return item;
 }
@@ -67,8 +67,12 @@ const SYSTEM = `你是主人的「经理」，在微信里跟主人聊天。你�
 1) 马上回主人，像同事聊天：中文、口语、简短（1-4 句），先给结论。不编造进度，只按状态说；状态里没有的就说不知道、可以问工人。
 2) 决定怎么处理主人这句话（action）：
 - none：只需要回答。问进度、问是不是卡了、闲聊、你能直接答的。
-- note：给当前任务的补充/偏好/新要求，不用打断（工人下个阶段会看信箱）。to_worker 写清楚要转达的话。
-- redo：工人方向明显错了、接着做会白做，要立刻打断让它按新要求在原来基础上改。redo 会**马上**打断（手上正在跑的这一步作废），reply 里别说"等它做完这步"。打断有代价，拿不准就用 note（note 是它下个阶段自己看到再调整）。
+- note：与当前任务兼容、可以等工人读取信箱再处理的补充。仅仅“同一话题”不构成打断理由。
+- redo：新要求与已接受要求冲突，或必须在当前步骤/下一项操作之前生效，否则继续执行会做错。立即中断旧执行，合并新要求后续做。措辞是“补充”“顺便”也可能必须打断。例如正在部署生产环境时说“只部署测试环境”，必须 redo；“先别改代码，只分析”也必须 redo。新增“最后加使用示例”通常是 note。
+- 同意、确认且没有新增执行要求 → none；如果正在等提问答案则 answer。问进度 → none。另一件独立的事 → queue。
+- 判断依据是当前任务、已知执行步骤、已有留言与新要求是否冲突，不是关键词或是否同题。不清楚且可能影响当前执行时，先澄清（none），不要声称已安全转达。
+- 先输出 relation：conflict（矛盾）、urgent（必须立即生效）、supplement（可延后补充）、agreement（同意）、status（询问）、unrelated（另一件事）、unclear（不明确）。再给 action。conflict/urgent 必须 redo，supplement 必须 note。明确 stop、提问 answer、拆话题 split 按各自规则。
+- 你的回复只能说明意图，不能宣称尚未确认的停止或撤销已经完成。中断不会撤销已完成的操作。
 - stop：主人明确要停下当前任务。
 - queue：跟当前任务无关的另一件事，工人做完再做。to_worker 写清任务。
 - answer：「工人正在等主人回答」时，这句就是回答。to_worker 写主人的回答（可以帮着整理清楚）。
@@ -76,7 +80,7 @@ const SYSTEM = `你是主人的「经理」，在微信里跟主人聊天。你�
 3) 主人意思不清楚、或者有几种做法时，先跟主人商量（action=none，在 reply 里问），商量好了再转达。
 reply 里说清你打算怎么办（比如"我转告它，拼接时加上"），别说空话。
 
-只输出一个 JSON 对象：{"reply": "给主人的话", "action": "none|note|redo|stop|queue|answer|split", "to_worker": "转达给工人的话（none/stop 时留空）"}`;
+只输出一个 JSON 对象：{"relation":"conflict|urgent|supplement|agreement|status|unrelated|unclear", "reason":"判断依据", "reply": "给主人的话", "action": "none|note|redo|stop|queue|answer|split", "to_worker": "转达给工人的话（none/stop 时留空）"}`;
 
 // 三家顾问的额度（2026-09-28：主人要经理能看额度、判断用谁；自动派活用 helper start auto，也是经理的模型判断）
 export function quotaBrief() {
@@ -114,8 +118,8 @@ export async function decide(ctx) {
   const t0 = Date.now();
   const hist = rj(HIST, {})[ctx.chat] || [];
   const q = pendingQuestion();
-  const unread = mailboxUnread();
-  const status = workerBrief(ctx.run, ctx.helpers) + quotaBrief() +
+  const unread = mailboxUnread().filter((x) => !x.chat || (x.chat === ctx.chat && (!x.runId || x.runId === ctx.runId)));
+  const status = workerBrief(ctx.run, ctx.helpers) + '\n\n【本轮已接受要求】\n' + cut(ctx.acceptedTask || ctx.run?.task, 6000) + quotaBrief() +
     (q ? '\n\n⚠️ 工人正在等主人回答它的提问：「' + cut(q.q, 200) + '」（' + mins(Date.now() - Date.parse(q.at)) + '前问的）' : '') +
     (unread.length ? '\n\n信箱里还有 ' + unread.length + ' 条留言工人还没看：' + unread.map((x) => '「' + cut(x.text, 60) + '」').join('') : '');
   const messages = [{ role: 'system', content: SYSTEM }, ...hist, { role: 'user', content: '【工人实时状态】\n' + status + '\n\n【主人说】' + ctx.text }];
@@ -125,8 +129,13 @@ export async function decide(ctx) {
     log('ERROR chat=' + ctx.chat + ' ' + cut(String(e.message || e), 200));
     return { reply: null, action: 'fallback', toWorker: '', route: 'none', ms: Date.now() - t0, error: String(e.message || e) };
   }
-  const action = ['none', 'note', 'redo', 'stop', 'queue', 'answer', 'split'].includes(out.action) ? out.action : 'none';
-  const res = { reply: String(out.reply || '').trim() || '收到。', action: action === 'answer' && !q ? 'note' : action, toWorker: String(out.to_worker || '').trim(), route, ms: Date.now() - t0, question: q };
+  let action = ['none', 'note', 'redo', 'stop', 'queue', 'answer', 'split'].includes(out.action) ? out.action : 'none';
+  const relation = String(out.relation || '');
+  if (!['stop', 'answer', 'split'].includes(action)) {
+    const mapped = { conflict: 'redo', urgent: 'redo', supplement: 'note', agreement: 'none', status: 'none', unrelated: 'queue', unclear: 'none' };
+    if (mapped[relation]) action = mapped[relation];
+  }
+  const res = { reply: String(out.reply || '').trim() || '收到。', action: action === 'answer' && !q ? 'note' : action, toWorker: String(out.to_worker || '').trim(), relation, reason: String(out.reason || ''), route, ms: Date.now() - t0, question: q };
   const h = rj(HIST, {});
   h[ctx.chat] = [...hist, { role: 'user', content: '【主人说】' + ctx.text + '\n（当时工人：' + cut(ctx.run ? ctx.run.current && ctx.run.current.label : '空闲', 60) + '）' },
     { role: 'assistant', content: JSON.stringify({ reply: res.reply, action: res.action, to_worker: res.toWorker }) }].slice(-HIST_KEEP);

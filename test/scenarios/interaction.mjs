@@ -1,5 +1,7 @@
 // 干活途中的交互：叫停、经理、改方向、进度、话题
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const dsh = async (env) => { await env.say('/dsh'); await env.waitText('已切换'); };
 const busy = async (env, task = '长任务 #sleep=4000') => {
@@ -10,6 +12,80 @@ const busy = async (env, task = '长任务 #sleep=4000') => {
 };
 
 export default [
+  {
+    name: '经理：中断续做合并未读补充且不重复补交', v1: false,
+    llmRules: { manager: text => text.includes('追加示例')
+      ? { relation: 'supplement', action: 'note', to_worker: '追加示例' }
+      : { relation: 'conflict', action: 'redo', to_worker: '只分析 #sleep=0' } },
+    async run(env) {
+      await dsh(env); await busy(env, '改代码 #sleep=4000');
+      await env.say('追加示例'); await env.waitText('已放入信箱');
+      await env.say('只分析'); await env.waitText('旧执行已停止'); await env.waitCalls(2); await env.idle();
+      assert.match(env.dshCalls()[1].task, /追加示例/);
+      await new Promise(r => setTimeout(r, 800)); assert.equal(env.dshCalls().length, 2);
+    },
+  },
+
+  {
+    name: '经理：信箱补交不消费其他聊天或话题的留言', v1: false,
+    async run(env) {
+      await dsh(env); await busy(env, '当前任务 #sleep=1500');
+      const file = path.join(env.home, '.aibox/mgr/mailbox.jsonl');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.appendFileSync(file, [
+        { id: 'foreign-chat', chat: 'someone-else', runId: 'old', text: 'FOREIGN_CHAT' },
+        { id: 'foreign-topic', chat: 'wxid_owner', topicId: 'unrelated-topic', runId: 'old', text: 'FOREIGN_TOPIC' },
+      ].map(x => JSON.stringify({ ...x, at: new Date().toISOString(), read: false })).join('\n') + '\n');
+      await env.say('最后加表格'); await env.waitText('已放入信箱'); await env.waitCalls(2); await env.idle();
+      assert.ok(!env.dshCalls().some(c => /FOREIGN_CHAT|FOREIGN_TOPIC/.test(c.task)));
+      const records = fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+      assert.equal(records.filter(x => x.id.startsWith('foreign') && !x.read).length, 2);
+    },
+  },
+
+  ...['conflict', 'urgent', 'supplement', 'agreement'].map(relation => ({
+    name: '经理：执行关系 ' + relation, v1: false,
+    llmRules: { manager: () => ({ relation, action: relation === 'supplement' ? 'redo' : 'note', reply: '继续按原计划执行', to_worker: '只部署测试环境 #sleep=0' }) },
+    async run(env) {
+      await dsh(env); await busy(env, '准备部署且保留兼容性 #sleep=2000');
+      await env.say('新增要求');
+      if (relation === 'conflict' || relation === 'urgent') {
+        await env.waitText('旧执行已停止'); await env.waitCalls(2); await env.idle();
+        assert.match(env.dshCalls()[1].task, /保留兼容性/);
+        assert.match(env.dshCalls()[1].task, /只部署测试环境/);
+        assert.ok(env.dshCalls()[1].sid, '首轮中断仍恢复会话');
+        assert.ok(!env.texts().some(t => t.startsWith('ECHO:准备部署')));
+        assert.throws(() => process.kill(env.dshCalls()[0].pid, 0), '旧进程已退出');
+      } else {
+        await env.waitText(relation === 'supplement' ? '已放入信箱' : '继续按原计划执行');
+        assert.equal(env.dshCalls().length, 1);
+        await env.waitText('ECHO:准备部署');
+        if (relation === 'supplement') { await env.waitCalls(2); assert.match(env.dshCalls()[1].task, /【你刚才干活时主人说的话/); }
+        await env.idle(); await new Promise(r => setTimeout(r, 700));
+        assert.equal(env.dshCalls().length, relation === 'supplement' ? 2 : 1);
+      }
+    },
+  })),
+  {
+    name: '经理：慢决策不得打断下一任务', v1: false,
+    llmRules: { manager: async () => { await new Promise(r => setTimeout(r, 1800)); return { relation: 'conflict', action: 'redo', to_worker: '改要求' }; } },
+    async run(env) {
+      await dsh(env); await busy(env, '第一项 #sleep=700'); await env.say('修改当前要求');
+      await env.waitText('ECHO:第一项'); await env.idle(); await busy(env, '第二项 #sleep=2500');
+      await env.waitText('执行状态已经变化'); await env.waitText('ECHO:第二项'); await env.idle();
+      assert.equal(env.dshCalls().length, 2);
+    },
+  },
+  {
+    name: '经理：等待决策时叫停不再重启', v1: false,
+    llmRules: { manager: async () => { await new Promise(r => setTimeout(r, 900)); return { relation: 'conflict', action: 'redo', to_worker: '改要求' }; } },
+    async run(env) {
+      await dsh(env); await busy(env); await env.say('修改当前要求'); await env.say('停');
+      await env.waitText('⛔ 停了'); await env.waitText('执行状态已经变化'); await env.idle();
+      assert.equal(env.dshCalls().length, 1);
+    },
+  },
+
   {
     name: '说「停」立刻停下，旧回复不发',
     async run(env) {

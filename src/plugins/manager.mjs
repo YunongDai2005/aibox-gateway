@@ -8,7 +8,7 @@ import { log, emit, errText, tag } from '../core/log.mjs';
 import * as wx from '../channel/wechat.mjs';
 import * as live from '../observe/live.mjs';
 import * as mgr from '../manager/core.mjs';
-import { wrapSteer, mailboxDelivery } from '../agent/prompts.mjs';
+import { managerRevision, mailboxDelivery } from '../agent/prompts.mjs';
 import { helperBrief } from './helpers.mjs';
 
 export default {
@@ -36,31 +36,64 @@ export default {
     });
     app.status((chat) => (mgr.isOn(chat, cfg.managerMode) ? '经理：在岗' : ''));
 
-    async function handle(msg, chat, text) {
-      const run = live.runningFor(chat)[0] || null;
-      const d = await mgr.decide({ chat, text, run, helpers: helperBrief() });
+    const decisions = new Map();
+    const epochs = new Map();
+    app.listen('preempt', ({ chat }) => epochs.set(chat, (epochs.get(chat) || 0) + 1));
+    app.listen('new', ({ chat }) => epochs.set(chat, (epochs.get(chat) || 0) + 1));
+
+    async function handle(msg, chat, text, target, run, epoch) {
+      const d = await mgr.decide({ chat, text, run, runId: target?.runId, acceptedTask: target?.task, helpers: helperBrief() });
       emit('manager.decide', { chat: tag(chat), action: d.action, ms: d.ms, route: d.route });
+      if ((epochs.get(chat) || 0) !== epoch) {
+        await wx.replySoft(msg, '🧑‍💼 刚才那轮执行状态已经变化，这条要求尚未应用：' + text + '\n请确认要调整哪项任务。');
+        return;
+      }
       if (d.action === 'fallback') {                 // 经理的模型都挂了 → 退回排队，不能丢话
         await wx.replySoft(msg, '📥 收到。（经理暂时联系不上，这句先排队，它做完手上的就处理。）');
-        app.agent.enqueue(msg, text);
+        app.agent.enqueueRouted(msg, text);
         log('manager fallback chat=' + chat + ' err=' + (d.error || '').slice(0, 160));
         return;
       }
-      await wx.replySoft(msg, '🧑‍💼 ' + d.reply);
       const tw = d.toWorker || text;
       const a = app.agent.active(chat);
-      if (d.action === 'note') mgr.mailboxAdd(tw);
+      if (['redo', 'stop', 'note', 'answer'].includes(d.action) &&
+          (!target || a !== target || a.state !== 'running' || (epochs.get(chat) || 0) !== epoch)) {
+        await wx.replySoft(msg, '🧑‍💼 刚才那轮执行状态已经变化，这条要求尚未应用：' + text + '\n请确认要调整哪项任务。');
+        return;
+      }
+      if (!['redo', 'stop', 'note'].includes(d.action)) await wx.replySoft(msg, '🧑‍💼 ' + d.reply);
+      if (d.action === 'note') { mgr.mailboxAdd(tw, 'note', { chat, runId: target.runId, topicId: app.threads?.summary(chat)?.fg?.id || null }); await wx.replySoft(msg, '🧑‍💼 好，我转告它。这是可继续执行的补充，已放入信箱。'); }
       else if (d.action === 'answer' && d.question) mgr.answerQuestion(d.question, tw);
       else if (d.action === 'queue') app.agent.enqueueRouted(msg, tw);
       else if (d.action === 'split') { if (app.topics) app.topics.split(msg, chat); }
       else if (d.action === 'stop') {
-        if (a && a.kind === 'chat') app.agent.interrupt(chat, a.runId).then((ok) => log('manager stop ' + (ok ? 'done' : 'noop') + ' chat=' + chat));
+        if (target.kind !== 'chat') { await wx.replySoft(msg, '🧑‍💼 当前在写交接，暂时无法安全打断。'); return; }
+        app.notify('preempt', { chat });
+        const ok = await app.agent.interrupt(chat, target.runId);
+        await wx.replySoft(msg, ok && target.hasClosed ? '🧑‍💼 当前执行已停止。已完成的操作仍然保留。' : '🧑‍💼 已请求停止，但尚未确认进程退出。');
       } else if (d.action === 'redo') {
-        if (a && a.kind === 'chat') {
-          app.notify('preempt', { chat });
-          app.agent.enqueue(msg, wrapSteer(tw), { priority: true });
-          app.agent.interrupt(chat, a.runId).then((ok) => log('manager redo interrupt ' + (ok ? 'done' : 'noop') + ' chat=' + chat));
-        } else mgr.mailboxAdd(tw);                     // 打断不了（在写交接等）→ 退成留言
+        if (target.kind !== 'chat') {
+          await wx.replySoft(msg, '🧑‍💼 当前正在写交接，暂时无法安全打断；这条调整尚未执行，请稍后重发。');
+          return;
+        }
+        app.notify('preempt', { chat });
+        const revisionEpoch = epochs.get(chat) || 0;
+        // Reserve the next queue slot before signalling, and gate it on confirmed exit.
+        let release;
+        const stopped = new Promise((resolve) => { release = resolve; });
+        app.agent.enqueueFn(chat, async () => {
+          if (!await stopped || (epochs.get(chat) || 0) !== revisionEpoch) return;
+          const notes = mgr.mailboxUnread().filter(x => x.chat === chat && x.runId === target.runId);
+          const original = (target.task || run?.task || '') + (notes.length ? '\n【此前尚未读取的补充】\n' + notes.map(x => x.text).join('\n') : '');
+          if (notes.length) mgr.mailboxMarkRead(notes.map(x => x.id));
+          await app.agent.answer(msg, managerRevision(original, tw), { raw: true });
+        }, { priority: true });
+        let ok = false;
+        try { ok = await app.agent.interrupt(chat, target.runId); }
+        finally { release(ok && target.hasClosed); }
+        await wx.replySoft(msg, ok && target.hasClosed
+          ? '🧑‍💼 好，我让它按新要求改。旧执行已停止，将保留未冲突的要求继续做。'
+          : '🧑‍💼 尚未确认旧执行停止，未启动新的执行。请检查当前任务状态。');
       }
       log('manager chat=' + chat + ' action=' + d.action + ' ms=' + d.ms + ' route=' + d.route);
     }
@@ -71,7 +104,13 @@ export default {
       const { chat, msg, said } = ctx;
       if (!(ctx.mode === 'dsh' && said && !said.startsWith('/') && mgr.isOn(chat, cfg.managerMode) && app.agent.busy(chat))) return;
       ctx.managed = true;
-      handle(msg, chat, said).catch((e) => log('manager ERROR chat=' + chat + ' ' + String((e && e.stack) || e)));
+      const target = app.agent.active(chat);
+      const run = live.runningFor(chat)[0] || null;
+      const epoch = epochs.get(chat) || 0;
+      const pending = (decisions.get(chat) || Promise.resolve()).then(() => handle(msg, chat, said, target, run, epoch))
+        .catch((e) => { log('manager ERROR chat=' + chat + ' ' + errText(e)); return wx.replySoft(msg, '🧑‍💼 这条要求处理失败，尚未确认应用，请重发。'); });
+      decisions.set(chat, pending);
+      pending.finally(() => { if (decisions.get(chat) === pending) decisions.delete(chat); });
       return 'consume';
     });
 
@@ -81,10 +120,13 @@ export default {
       if (!unread.length) return;
       for (const [chat, msg] of lastDshMsg) {
         if (app.agent.busy(chat) || app.agent.queueBusy(chat)) continue;
-        mgr.mailboxMarkRead(unread.map((x) => x.id));
-        log('mailbox deliver chat=' + chat + ' n=' + unread.length);
-        emit('mailbox.deliver', { chat: tag(chat), n: unread.length });
-        app.agent.enqueue(msg, mailboxDelivery(unread.map((x) => '- ' + x.text).join('\n')));
+        const topicId = app.threads?.summary(chat)?.fg?.id || null;
+        const scoped = unread.filter((x) => !x.chat || (x.chat === chat && (!x.topicId || x.topicId === topicId)));
+        if (!scoped.length) continue;
+        mgr.mailboxMarkRead(scoped.map((x) => x.id));
+        log('mailbox deliver chat=' + chat + ' n=' + scoped.length);
+        emit('mailbox.deliver', { chat: tag(chat), n: scoped.length });
+        app.agent.enqueue(msg, mailboxDelivery(scoped.map((x) => '- ' + x.text).join('\n')));
         break;
       }
     });

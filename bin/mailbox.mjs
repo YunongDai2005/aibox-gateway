@@ -8,7 +8,8 @@
  */
 import { mailboxUnread, mailboxAll, mailboxMarkRead } from '/home/aibox/wx-router/manager.mjs';
 const all = process.argv.includes('--all');
-const items = all ? mailboxAll().slice(-20) : mailboxUnread();
+const chat = process.env.AIBOX_CHAT, runId = process.env.AIBOX_RUN_ID;
+const items = (all ? mailboxAll().slice(-20) : mailboxUnread()).filter((x) => !x.chat || (x.chat === chat && x.runId === runId));
 if (!items.length) { console.log('（没有新留言）'); process.exit(0); }
 for (const x of items) console.log('📩 ' + new Date(x.at).toTimeString().slice(0, 5) + (x.read ? '（已读）' : '') + ' 主人（经经理转达）：' + x.text);
 if (!all) { mailboxMarkRead(items.map((x) => x.id)); console.log('\n→ 处理完在【进展】里回应一句，主人能看到。'); }

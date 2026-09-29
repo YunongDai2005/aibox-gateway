@@ -21,6 +21,7 @@ export default {
         await wx.replySoft(msg, '⏳ 这会正在收尾写交接，停不了。\n（就快好了，等它写完再发「停」我就停。）');
         return 'consume';
       }
+      app.notify('preempt', { chat });
       (async () => {
         const ok = await app.agent.interrupt(chat, a.runId);
         log('interrupt ' + (ok ? 'done' : 'noop') + ' chat=' + chat + ' run=' + a.runId.slice(0, 8));

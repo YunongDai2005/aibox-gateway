@@ -57,7 +57,7 @@ function startLlm(rules, calls) {
       const sys = (msgs[0] && msgs[0].content) || '';
       const last = String((msgs.at(-1) || {}).content || '');
       let out;
-      if (sys.includes('你是主人的「经理」')) { const said = (last.match(/【主人说】([\s\S]*)$/) || [])[1] || last; out = rules.manager(said.trim()); calls.push({ kind: 'manager', said: said.trim(), out }); }
+      if (sys.includes('你是主人的「经理」')) { const said = (last.match(/【主人说】([\s\S]*)$/) || [])[1] || last; out = await rules.manager(said.trim(), { sys, last }); calls.push({ kind: 'manager', said: said.trim(), out }); }
       else { out = rules.judge(last); calls.push({ kind: 'judge-fast', out }); }
       if (out === 'ERROR') { res.writeHead(500); res.end('{}'); return; }
       return send({ choices: [{ message: { content: JSON.stringify(out) } }] });
